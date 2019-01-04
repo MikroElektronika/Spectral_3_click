@@ -1,0 +1,134 @@
+'
+'Example for Spectral3 Click
+'
+'    Date          : Nov 2017.
+'    Author        : MikroE Team
+'
+'Test configuration MSP :
+'    
+'    MCU              : MSP432
+'    Dev. Board       : Clicker 2 for MSP432
+'    ARM Compiler ver : v6.0.0.0
+'
+'---
+'
+'Description :
+'
+'The application is composed of three sections :
+'
+'- System Initialization - Initializes all necessary GPIO pins, UART used for
+'the communcation with GSM module and UART used for infromation logging
+'- Application Initialization - Initializes driver, power on module and sends few
+'command for the default module configuration
+'- Application Task - running in parallel core state machine and and checks for call flag.
+'If call detected parser will hang up call.
+'
+'Additional Functions :
+'
+'All additional functions such as timer initialization and default handler. 
+''
+'Notes :
+'
+'- Echo must be turned off for succefull parsing. ( ATE0 )
+'- UART polling works much better with HFC enabled.
+'- In case of usage of other MCUs Timer initialization must be adjusted according to your MCU.
+'
+'
+program Click_Spectral3_MSP
+
+include Click_Spectral3_types
+include Click_Spectral3_config
+include Click_Spectral3_timer
+
+dim
+    ' COMMANDS
+    SPECTRAL3_AT as string[3]
+    SPECTRAL3_HANGUP as string[4]
+    SPECTRAL3_ECHO_OFF as string[5]
+    SPECTRAL3_FORMAT_DEFAULT as string[10]
+    SPECTRAL3_HFC_ENABLE as string[11]
+
+    ' CALLER FLAG
+    callFlag as uint8_t
+
+sub procedure spectral3_default_handler(dim rsp as ^uint8_t, dim evArgs as ^uint8_t) 
+dim
+    ptr_rsp as ^char
+    
+    ptr_rsp = rsp + 2
+    
+    if ( ptr_rsp^ = 82 ) then
+        callFlag = 1
+    end if
+
+    mikrobus_logWrite( ptr_rsp - 2, _LOG_TEXT )
+    
+end sub
+
+sub procedure systemInit() 
+
+    SPECTRAL3_AT = "AT"
+    SPECTRAL3_HANGUP = "ATH"
+    SPECTRAL3_ECHO_OFF = "ATE0"
+    SPECTRAL3_FORMAT_DEFAULT = "AT+CMGF=1"
+    SPECTRAL3_HFC_ENABLE = "AT+IFC=2,2"
+
+    callFlag = 0
+
+    mikrobus_gpioInit( _MIKROBUS1, _MIKROBUS_AN_PIN, _GPIO_INPUT )
+    mikrobus_gpioInit( _MIKROBUS1, _MIKROBUS_PWM_PIN, _GPIO_INPUT )
+    mikrobus_gpioInit( _MIKROBUS1, _MIKROBUS_INT_PIN, _GPIO_INPUT )
+    mikrobus_gpioInit( _MIKROBUS1, _MIKROBUS_RST_PIN, _GPIO_OUTPUT )
+    mikrobus_gpioInit( _MIKROBUS1, _MIKROBUS_CS_PIN, _GPIO_OUTPUT )    
+
+    mikrobus_uartInit(_MIKROBUS1, @_SPECTRAL3_UART_CFG[0]) 
+    mikrobus_logInit(_MIKROBUS2, 9600) 
+
+end sub
+
+sub procedure applicationInit() 
+
+' TIMER INIT
+    spectral3_configTimer()
+
+' DRIVER INIT
+    spectral3_uartDriverInit(T_SPECTRAL3_P(@_MIKROBUS1_GPIO), T_SPECTRAL3_P(@_MIKROBUS1_UART)) 
+    spectral3_coreInit(@spectral3_default_handler, 1500)
+
+' MODULE POWER ON
+    spectral3_hfcEnable(true) 
+    spectral3_modulePower(true) 
+
+' MODULE INIT
+    spectral3_cmdSingle(@SPECTRAL3_AT[0]) 
+    spectral3_cmdSingle(@SPECTRAL3_AT[0]) 
+    spectral3_cmdSingle(@SPECTRAL3_AT[0]) 
+    spectral3_cmdSingle(@SPECTRAL3_ECHO_OFF[0]) 
+    spectral3_cmdSingle(@SPECTRAL3_HFC_ENABLE[0]) 
+    spectral3_cmdSingle(@SPECTRAL3_FORMAT_DEFAULT[0]) 
+
+end sub
+
+sub procedure applicationTask() 
+
+    spectral3_process() 
+
+    if ((0 <> callFlag)) then 
+    
+        spectral3_cmdSingle(@SPECTRAL3_HANGUP[0]) 
+        Delay_ms(3000) 
+
+        callFlag = 0 
+    end if
+
+end sub
+
+main :
+
+    systemInit() 
+    applicationInit() 
+    while (1) 
+        applicationTask() 
+    wend
+
+end.

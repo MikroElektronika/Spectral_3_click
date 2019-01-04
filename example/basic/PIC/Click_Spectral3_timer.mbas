@@ -1,0 +1,51 @@
+'
+'
+'Use mikroE Timer Calculator to generate proper timer configuration
+'and timer ISR.
+'
+'https://www.mikroe.com/timer-calculator
+'
+'
+module Click_Spectral3_timer
+
+include Click_Spectral3_types
+
+sub procedure Interrupt() 
+sub procedure spectral3_configTimer() 
+
+implements
+
+'#define __Spectral3_TIMER__
+sub procedure spectral3_configTimer() 
+
+    T1CON = 0x01 
+    TMR1IF_bit = 0 
+    TMR1H = 0xF0 
+    TMR1L = 0x60 
+    TMR1IE_bit = 1 
+    INTCON = 0xC0 
+    RC1IE_bit = 1 
+    RC1IF_bit = 0 
+    PEIE_bit = 1 
+    GIE_bit = 1 
+
+end sub
+
+sub procedure Interrupt() 
+dim
+    tmp as char
+
+    if ((TMR1IF_bit <> 0)) then 
+        spectral3_tick() 
+        TMR1IF_bit = 0 
+        TMR1H = 0xF0 
+        TMR1L = 0x60 
+    end if
+    if ((RC1IF_bit = 1)) then
+        tmp = UART1_Read()	
+        spectral3_putc(tmp) 
+    end if
+
+end sub
+
+end.

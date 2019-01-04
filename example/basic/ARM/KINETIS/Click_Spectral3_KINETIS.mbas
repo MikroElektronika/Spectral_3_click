@@ -1,0 +1,161 @@
+'
+'Example for Spectral3 Click
+'
+'    Date          : Feb 2018.
+'    Author        : MikroE Team
+'
+'Test configuration KINETIS :
+'    
+'    MCU              : MK64
+'    Dev. Board       : HEXIWEAR
+'    ARM Compiler ver : v6.0.0.0
+'
+'---
+'
+'Description :
+'
+'The application is composed of three sections :
+'
+'- System Initialization - Initializes all necessary GPIO pins, UART used for
+'the communcation with Spectral and UART used for infromation logging
+'- Application Initialization - Initializes driver, reset module and sends
+'command for the default module configuration
+'- Application Task - Sends the command to start reading data.
+'   Then logs to USBUART, six read values every 1 second.
+'
+'
+'
+program Click_Spectral3_KINETIS
+
+include Click_Spectral3_types
+include Click_Spectral3_config
+include Click_Spectral3_timer
+
+dim
+    readData as uint16_t[6] 
+    rspBuffer as char[100] 
+    text as char[100] 
+    cmdData as uint8_t[7] 
+    cmdAT as uint8_t[3] 
+    cmdGain as uint8_t[9] 
+    cmdMode as uint8_t[10] 
+    
+sub procedure spectral3_default_handler(dim rsp as ^uint8_t, dim evArgs as ^uint8_t) 
+dim
+    ptr as ^char
+    ptr = rsp
+
+    mikrobus_logWrite(ptr, _LOG_LINE) 
+    strcpy(rspBuffer, ptr) 
+
+end sub
+
+sub procedure systemInit() 
+
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_INT_PIN, _GPIO_INPUT) 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_RST_PIN, _GPIO_OUTPUT) 
+    mikrobus_uartInit(_MIKROBUS1, @_SPECTRAL3_UART_CFG[0]) 
+    mikrobus_logInit(_MIKROBUS2, 115200) 
+    mikrobus_logWrite(" --- System init --- ", _LOG_LINE) 
+
+end sub
+
+sub procedure applicationInit() 
+
+    spectral3_configTimer() 
+    spectral3_uartDriverInit(T_SPECTRAL3_P(@_MIKROBUS1_GPIO), T_SPECTRAL3_P(@_MIKROBUS1_UART)) 
+    UART2_C2 = (UART2_C2 or (1 << 5)) 
+    NVIC_IntEnable(IVT_INT_UART2_RX_TX) 
+    EnableInterrupts() 
+    spectral3_coreInit(@spectral3_default_handler, 1500) 
+    spectral3_reset() 
+    Delay_ms(500) 
+    spectral3_cmdSingle(@cmdAT[0]) 
+    spectral3_cmdSingle(@cmdGain[0]) 
+    spectral3_cmdSingle(@cmdMode[0]) 
+    Delay_ms(1000) 
+
+end sub
+
+sub procedure applicationTask() 
+
+    spectral3_process() 
+    spectral3_cmdSingle(@cmdData[0]) 
+    spectral3_getData(@rspBuffer[0], @readData[0]) 
+    IntToStr(readData[0], text) 
+    mikrobus_logWrite("-- R value:", _LOG_TEXT) 
+    mikrobus_logWrite(text, _LOG_LINE) 
+    IntToStr(readData[1], text) 
+    mikrobus_logWrite("-- S value:", _LOG_TEXT) 
+    mikrobus_logWrite(text, _LOG_LINE) 
+    IntToStr(readData[2], text) 
+    mikrobus_logWrite("-- T value:", _LOG_TEXT) 
+    mikrobus_logWrite(text, _LOG_LINE) 
+    IntToStr(readData[3], text) 
+    mikrobus_logWrite("-- U value:", _LOG_TEXT) 
+    mikrobus_logWrite(text, _LOG_LINE) 
+    IntToStr(readData[4], text) 
+    mikrobus_logWrite("-- V value:", _LOG_TEXT) 
+    mikrobus_logWrite(text, _LOG_LINE) 
+    IntToStr(readData[5], text) 
+    mikrobus_logWrite("-- W value:", _LOG_TEXT) 
+    mikrobus_logWrite(text, _LOG_LINE) 
+    mikrobus_logWrite("---------------------", _LOG_LINE) 
+    Delay_1sec() 
+
+end sub
+
+'
+' * UART Interrupt
+' 
+' 
+sub procedure RX_ISR() iv IVT_INT_UART2_RX_TX ics ICS_AUTO
+dim
+    tmp as char
+
+    if ((UART2_S1 and (1 << 5))) then 
+	    tmp = UART2_D
+        spectral3_putc(tmp) 
+    end if
+
+end sub
+
+main :
+    rspBuffer[0] = 0
+    cmdData[0] = "A"
+    cmdData[1] = "T"
+    cmdData[2] = "D"
+    cmdData[3] = "A"
+    cmdData[4] = "T"
+    cmdData[5] = "A"
+    cmdData[6] = 0
+    cmdAT[0] = "A"
+    cmdAT[1] = "T"
+    cmdAT[2] = 0
+    cmdGain[0] = "A"
+    cmdGain[1] = "T"
+    cmdGain[2] = "G"
+    cmdGain[3] = "A"
+    cmdGain[4] = "I"
+    cmdGain[5] = "N"
+    cmdGain[6] = "="
+    cmdGain[7] = "2"
+    cmdGain[8] = 0
+    cmdMode[0] = "A"
+    cmdMode[1] = "T"
+    cmdMode[2] = "T"
+    cmdMode[3] = "C"
+    cmdMode[4] = "S"
+    cmdMode[5] = "M"
+    cmdMode[6] = "D"
+    cmdMode[7] = "="
+    cmdMode[8] = "2"
+    cmdMode[9] = 0
+
+    systemInit() 
+    applicationInit() 
+    while (1) 
+        applicationTask() 
+    wend
+
+end.
